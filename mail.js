@@ -1,37 +1,33 @@
 import nodemailer from "nodemailer";
-import { google } from "googleapis";
-
-const OAuth2 = google.auth.OAuth2;
-
-const oauth2Client = new OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  "http://localhost:3000/oauth2callback"
-);
-
-oauth2Client.setCredentials({
-  refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-});
 
 export async function sendMail({ to, subject, html }) {
-  const accessToken = await oauth2Client.getAccessToken();
+  try {
+    // Gmail SMTP ile basit kullanım
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+    });
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      type: "OAuth2",
-      user: process.env.MAIL_USER,
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-      accessToken: accessToken.token,
-    },
-  });
+    // Bağlantıyı test et
+    await transporter.verify();
+    console.log("✅ SMTP bağlantısı başarılı");
 
-  return transporter.sendMail({
-    from: `"LipApp" <${process.env.MAIL_USER}>`,
-    to,
-    subject,
-    html,
-  });
+    const info = await transporter.sendMail({
+      from: `"LipApp" <${process.env.MAIL_USER}>`,
+      to,
+      subject,
+      html,
+    });
+
+    console.log("✅ Mail gönderildi:", info.messageId);
+    return info;
+  } catch (error) {
+    console.error("❌ Mail gönderme hatası:", error.message);
+    throw error;
+  }
 }
