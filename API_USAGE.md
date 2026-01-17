@@ -14,7 +14,7 @@ node server.js
 
 ## Authentication
 
-Tüm endpoint'ler (register ve login hariç) JWT token gerektirir.
+Tüm endpoint'ler JWT token gerektirir.
 
 **Header:**
 ```
