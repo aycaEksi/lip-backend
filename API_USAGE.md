@@ -152,37 +152,39 @@ POST /api/avatar
 Content-Type: application/json
 
 {
-  "hair_style": "long",
-  "hair_color": "#FF5733",
-  "outfit": "casual",
-  "outfit_color": "#3498DB"
+  "hair_style": "long",           // Saç stili
+  "hair_color": "#8B4513",        // Saç rengi (hex veya string)
+  "eye_color": "#3498DB",         // Göz rengi
+  "skin_tone": "#F5CBA7",         // Ten rengi
+  "gender": "female",             // Cinsiyet (male/female/other)
+  "top_clothing": "tshirt",       // Üst kıyafet
+  "top_clothing_color": "#E74C3C", // Üst kıyafet rengi
+  "bottom_clothing": "jeans",     // Alt kıyafet
+  "bottom_clothing_color": "#34495E" // Alt kıyafet rengi
 }
 ```
+
+**Not:** Tüm alanlar opsiyonel. Sadece güncellemek istediğiniz alanları gönderebilirsiniz.
 
 ### Avatar Getir
 ```
 GET /api/avatar
-```
 
----
-
-## 🎨 Avatar Preferences
-
-### Avatar Tercihleri Güncelle
-```
-POST /api/avatar-prefs
-Content-Type: application/json
-
+Dönen veri:
 {
-  "hair": 2,
-  "eyes": 1,
-  "outfit": 3
+  "id": 1,
+  "user_id": 5,
+  "hair_style": "long",
+  "hair_color": "#8B4513",
+  "eye_color": "#3498DB",
+  "skin_tone": "#F5CBA7",
+  "gender": "female",
+  "top_clothing": "tshirt",
+  "top_clothing_color": "#E74C3C",
+  "bottom_clothing": "jeans",
+  "bottom_clothing_color": "#34495E",
+  "updated_at": "2026-01-16T10:30:00.000Z"
 }
-```
-
-### Avatar Tercihleri Getir
-```
-GET /api/avatar-prefs
 ```
 
 ---

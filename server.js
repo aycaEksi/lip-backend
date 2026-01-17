@@ -11,8 +11,15 @@ import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
 import jwt from "jsonwebtoken";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import { db } from "./db.js";
 import { sendMail } from "./mail.js";
+
+// ES6 modules için __dirname alternatifi
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // JWT secret key (.env'ye ekle)
 const JWT_SECRET = process.env.JWT_SECRET || "lip-app-secret-key-2026";
@@ -21,6 +28,10 @@ const JWT_SECRET = process.env.JWT_SECRET || "lip-app-secret-key-2026";
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Static files için uploads klasörünü serve et
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 app.use((req, res, next) => {
   console.log("Gelen istek:", req.method, req.url);
   next();
@@ -34,7 +45,7 @@ const openai = new OpenAI({
 /* ---------------- REGISTER ---------------- */
 
 app.post("/api/register", (req, res) => {
-  const { email, password } = req.body;
+  const { name, email, password } = req.body;
   
   // Önce email'in var olup olmadığını kontrol et
   const checkEmailSql = "SELECT id, is_verified FROM users WHERE email = ?";
@@ -62,13 +73,13 @@ app.post("/api/register", (req, res) => {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     const sql = `
-      INSERT INTO users (email, password, verification_token, is_verified)
-      VALUES (?, ?, ?, false)
+      INSERT INTO users (name, email, password, verification_token, is_verified)
+      VALUES (?, ?, ?, ?, false)
     `;
 
-    console.log("🔍 Kayıt verisi:", { email, password, verificationCode });
+    console.log("🔍 Kayıt verisi:", { name, email, password, verificationCode });
 
-    db.query(sql, [email, password, verificationCode], async (err, result) => {
+    db.query(sql, [name, email, password, verificationCode], async (err, result) => {
     if (err) {
       console.error("❌ Database hatası:", err);
       return res.status(500).json({ error: err.message });
@@ -146,7 +157,7 @@ app.post("/api/verify-code", (req, res) => {
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body;
 
-  const sql = `SELECT id, email, is_verified FROM users WHERE email=? AND password=?`;
+  const sql = `SELECT id, name, email, is_verified FROM users WHERE email=? AND password=?`;
 
   db.query(sql, [email, password], (err, results) => {
     if (err) return res.status(500).json({ error: "Sunucu hatası" });
@@ -171,6 +182,7 @@ app.post("/api/login", (req, res) => {
       token: token,
       user: {
         id: user.id,
+        name: user.name,
         email: user.email,
         isVerified: user.is_verified
       }
@@ -200,7 +212,7 @@ const authenticateToken = (req, res, next) => {
 /* ---------------- GET USER PROFILE ---------------- */
 
 app.get("/api/profile", authenticateToken, (req, res) => {
-  const sql = `SELECT id, email, is_verified FROM users WHERE id = ?`;
+  const sql = `SELECT id, name, email, is_verified FROM users WHERE id = ?`;
   
   db.query(sql, [req.user.userId], (err, results) => {
     if (err) return res.status(500).json({ error: "Sunucu hatası" });
@@ -213,6 +225,7 @@ app.get("/api/profile", authenticateToken, (req, res) => {
     res.json({
       user: {
         id: user.id,
+        name: user.name,
         email: user.email,
         isVerified: user.is_verified
       }
@@ -264,19 +277,65 @@ SADECE şu JSON formatında cevap ver:
 
 /* ---------------- SERVER ---------------- */
 
+// ==================== UPLOAD PHOTO ====================
+// Multer config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, './uploads/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `photo_${Date.now()}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  // fileFilter geçici olarak devre dışı - her dosyayı kabul et
+});
+
+app.post('/api/upload-photo', authenticateToken, upload.single('photo'), (req, res) => {
+  console.log("📸 Upload endpoint çalıştı");
+  console.log("📦 req.file:", req.file);
+  console.log("📦 req.body:", req.body);
+  
+  if (!req.file) {
+    console.log("❌ Dosya bulunamadı");
+    return res.status(400).json({ error: 'Dosya yüklenemedi' });
+  }
+  
+  // URL'i döndür
+  const photoPath = `/uploads/${req.file.filename}`;
+  console.log("✅ Resim yüklendi:", photoPath);
+  res.json({ path: photoPath });
+});
+
 // ==================== DAY ENTRIES ====================
 app.post("/api/day-entries", authenticateToken, (req, res) => {
-  const { date, note, photo1_url, photo2_url } = req.body;
+  console.log("📸 Day Entry POST isteği geldi");
+  console.log("📦 Gelen veri:", req.body);
+  
+  const { date, note, photo1_path, photo2_path } = req.body;
   const userId = req.user.userId;
+  
+  console.log("👤 User ID:", userId);
+  console.log("📅 Date:", date);
+  console.log("📝 Note:", note);
+  console.log("🖼️ Photo1:", photo1_path);
+  console.log("🖼️ Photo2:", photo2_path);
 
   const sql = `
-    INSERT INTO day_entries (user_id, date, note, photo1_url, photo2_url)
+    INSERT INTO day_entries (user_id, date, note, photo1_path, photo2_path)
     VALUES (?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE note = ?, photo1_url = ?, photo2_url = ?
+    ON DUPLICATE KEY UPDATE note = ?, photo1_path = ?, photo2_path = ?
   `;
 
-  db.query(sql, [userId, date, note, photo1_url, photo2_url, note, photo1_url, photo2_url], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+  db.query(sql, [userId, date, note, photo1_path, photo2_path, note, photo1_path, photo2_path], (err, result) => {
+    if (err) {
+      console.error("❌ Entry kaydetme hatası:", err);
+      return res.status(500).json({ error: "Kayıt yapılamadı" });
+    }
     res.json({ message: "Entry kaydedildi", id: result.insertId });
   });
 });
@@ -287,7 +346,10 @@ app.get("/api/day-entries/:date", authenticateToken, (req, res) => {
 
   const sql = "SELECT * FROM day_entries WHERE user_id = ? AND date = ?";
   db.query(sql, [userId, date], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Entry getirme hatası:", err);
+      return res.status(500).json({ error: "Veri getirilemedi" });
+    }
     res.json(results.length > 0 ? results[0] : null);
   });
 });
@@ -297,7 +359,10 @@ app.get("/api/day-entries", authenticateToken, (req, res) => {
   const sql = "SELECT * FROM day_entries WHERE user_id = ? ORDER BY date DESC";
   
   db.query(sql, [userId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Entry listesi getirme hatası:", err);
+      return res.status(500).json({ error: "Veriler getirilemedi" });
+    }
     res.json(results);
   });
 });
@@ -309,7 +374,10 @@ app.post("/api/tasks", authenticateToken, (req, res) => {
 
   const sql = "INSERT INTO tasks (user_id, period, title, due_date) VALUES (?, ?, ?, ?)";
   db.query(sql, [userId, period, title, due_date || null], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Task ekleme hatası:", err);
+      return res.status(500).json({ error: "Görev eklenemedi" });
+    }
     res.json({ message: "Task eklendi", id: result.insertId });
   });
 });
@@ -326,10 +394,13 @@ app.get("/api/tasks", authenticateToken, (req, res) => {
     params.push(period);
   }
 
-  sql += " ORDER BY created_at DESC";
+  sql += " ORDER BY id DESC";
 
   db.query(sql, params, (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Task listesi getirme hatası:", err);
+      return res.status(500).json({ error: "Görevler getirilemedi" });
+    }
     res.json(results);
   });
 });
@@ -339,10 +410,36 @@ app.put("/api/tasks/:id", authenticateToken, (req, res) => {
   const { title, done, due_date } = req.body;
   const userId = req.user.userId;
 
-  const sql = "UPDATE tasks SET title = ?, done = ?, due_date = ? WHERE id = ? AND user_id = ?";
-  db.query(sql, [title, done, due_date, id, userId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Task bulunamadı" });
+  // Sadece gönderilen alanları güncelle
+  const updates = [];
+  const values = [];
+  
+  if (title !== undefined) {
+    updates.push("title = ?");
+    values.push(title);
+  }
+  if (done !== undefined) {
+    updates.push("done = ?");
+    values.push(done);
+  }
+  if (due_date !== undefined) {
+    updates.push("due_date = ?");
+    values.push(due_date);
+  }
+  
+  if (updates.length === 0) {
+    return res.status(400).json({ error: "Güncellenecek alan yok" });
+  }
+  
+  values.push(id, userId);
+  const sql = `UPDATE tasks SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`;
+  
+  db.query(sql, values, (err, result) => {
+    if (err) {
+      console.error("❌ Task güncelleme hatası:", err);
+      return res.status(500).json({ error: "Görev güncellenemedi" });
+    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Görev bulunamadı" });
     res.json({ message: "Task güncellendi" });
   });
 });
@@ -353,8 +450,11 @@ app.delete("/api/tasks/:id", authenticateToken, (req, res) => {
 
   const sql = "DELETE FROM tasks WHERE id = ? AND user_id = ?";
   db.query(sql, [id, userId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Task bulunamadı" });
+    if (err) {
+      console.error("❌ Task silme hatası:", err);
+      return res.status(500).json({ error: "Görev silinemedi" });
+    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Görev bulunamadı" });
     res.json({ message: "Task silindi" });
   });
 });
@@ -366,7 +466,10 @@ app.post("/api/capsules", authenticateToken, (req, res) => {
 
   const sql = "INSERT INTO capsules (user_id, title, note, unlock_at) VALUES (?, ?, ?, ?)";
   db.query(sql, [userId, title, note, unlock_at], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Kapsül oluşturma hatası:", err);
+      return res.status(500).json({ error: "Kapsül oluşturulamadı" });
+    }
     res.json({ message: "Kapsül oluşturuldu", id: result.insertId });
   });
 });
@@ -376,7 +479,10 @@ app.get("/api/capsules", authenticateToken, (req, res) => {
   const sql = "SELECT * FROM capsules WHERE user_id = ? ORDER BY unlock_at ASC";
   
   db.query(sql, [userId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Kapsül listesi getirme hatası:", err);
+      return res.status(500).json({ error: "Kapsüller getirilemedi" });
+    }
     res.json(results);
   });
 });
@@ -387,7 +493,10 @@ app.delete("/api/capsules/:id", authenticateToken, (req, res) => {
 
   const sql = "DELETE FROM capsules WHERE id = ? AND user_id = ?";
   db.query(sql, [id, userId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Kapsül silme hatası:", err);
+      return res.status(500).json({ error: "Kapsül silinemedi" });
+    }
     if (result.affectedRows === 0) return res.status(404).json({ error: "Kapsül bulunamadı" });
     res.json({ message: "Kapsül silindi" });
   });
@@ -424,7 +533,10 @@ Sadece tek kelime döndür, başka bir şey yazma.
     // Mood'u database'e kaydet
     const sql = "INSERT INTO moods (user_id, energy, happiness, stress, note, durum) VALUES (?, ?, ?, ?, ?, ?)";
     db.query(sql, [userId, energy, happiness, stress, note || null, durum], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) {
+        console.error("❌ Mood kaydetme hatası:", err);
+        return res.status(500).json({ error: "Ruh hali kaydedilemedi" });
+      }
       res.json({ 
         message: "Mood kaydedildi", 
         id: result.insertId,
@@ -436,7 +548,10 @@ Sadece tek kelime döndür, başka bir şey yazma.
     // AI hatası olursa durum olmadan kaydet
     const sql = "INSERT INTO moods (user_id, energy, happiness, stress, note) VALUES (?, ?, ?, ?, ?)";
     db.query(sql, [userId, energy, happiness, stress, note || null], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) {
+        console.error("❌ Mood kaydetme hatası:", err);
+        return res.status(500).json({ error: "Ruh hali kaydedilemedi" });
+      }
       res.json({ message: "Mood kaydedildi (durum belirlenemedi)", id: result.insertId });
     });
   }
@@ -448,7 +563,10 @@ app.get("/api/moods", authenticateToken, (req, res) => {
 
   const sql = "SELECT * FROM moods WHERE user_id = ? ORDER BY created_at DESC LIMIT ?";
   db.query(sql, [userId, parseInt(limit)], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Mood listesi getirme hatası:", err);
+      return res.status(500).json({ error: "Ruh hali verileri getirilemedi" });
+    }
     res.json(results);
   });
 });
@@ -458,7 +576,10 @@ app.get("/api/moods/latest", authenticateToken, (req, res) => {
   const sql = "SELECT * FROM moods WHERE user_id = ? ORDER BY created_at DESC LIMIT 1";
   
   db.query(sql, [userId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Son mood getirme hatası:", err);
+      return res.status(500).json({ error: "Veri getirilemedi" });
+    }
     res.json(results.length > 0 ? results[0] : null);
   });
 });
@@ -473,7 +594,7 @@ app.get("/api/moods/latest-durum", authenticateToken, (req, res) => {
   db.query(sql, [userId], (err, results) => {
     if (err) {
       console.error("❌ Database hatası:", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Durum bilgisi getirilemedi" });
     }
     
     console.log("📊 Query sonucu:", results);
@@ -488,23 +609,82 @@ app.get("/api/moods/latest-durum", authenticateToken, (req, res) => {
   });
 });
 
+// Mood için AI yorumu
+app.post("/api/moods/insight", authenticateToken, async (req, res) => {
+  try {
+    const { energy, happiness, stress, note } = req.body;
+    
+    const prompt = `Kullanıcının ruh hali: Enerji: ${energy}/10, Mutluluk: ${happiness}/10, Stres: ${stress}/10. ${note ? `Not: ${note}` : ''} 
+Lütfen bu ruh haline göre kısa, olumlu, motive edici bir yorum yaz (maksimum 2 cümle, Türkçe).`;
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "Sen bir ruh hali koçusun. Kısa, olumlu yorumlar yapıyorsun." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 100,
+      temperature: 0.7
+    });
+
+    const insight = completion.choices[0]?.message?.content || "Harika! 🌟";
+
+    console.log("💬 AI Yorumu:", insight);
+    res.json({ insight });
+  } catch (error) {
+    console.error("❌ Mood insight hatası:", error);
+    res.json({ insight: "Ruh halinizi kaydettik! 💪" });
+  }
+});
+
 // ==================== AVATAR ====================
 app.post("/api/avatar", authenticateToken, (req, res) => {
-  const { hair_style, hair_color, outfit, outfit_color } = req.body;
+  console.log("🎨 Avatar POST isteği geldi");
+  console.log("📦 Body:", req.body);
+  console.log("👤 User ID:", req.user.userId);
+  
+  const { 
+    hair_style, 
+    hair_color, 
+    eye_color, 
+    skin_tone, 
+    gender,
+    top_clothing, 
+    top_clothing_color, 
+    bottom_clothing, 
+    bottom_clothing_color 
+  } = req.body;
   const userId = req.user.userId;
 
   const sql = `
-    INSERT INTO avatars (user_id, hair_style, hair_color, outfit, outfit_color)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO avatars (
+      user_id, hair_style, hair_color, eye_color, skin_tone, gender,
+      top_clothing, top_clothing_color, bottom_clothing, bottom_clothing_color
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE 
-      hair_style = ?, hair_color = ?, outfit = ?, outfit_color = ?
+      hair_style = ?, 
+      hair_color = ?, 
+      eye_color = ?, 
+      skin_tone = ?, 
+      gender = ?,
+      top_clothing = ?, 
+      top_clothing_color = ?, 
+      bottom_clothing = ?, 
+      bottom_clothing_color = ?
   `;
 
   db.query(sql, [
-    userId, hair_style, hair_color, outfit, outfit_color,
-    hair_style, hair_color, outfit, outfit_color
+    userId, hair_style, hair_color, eye_color, skin_tone, gender,
+    top_clothing, top_clothing_color, bottom_clothing, bottom_clothing_color,
+    hair_style, hair_color, eye_color, skin_tone, gender,
+    top_clothing, top_clothing_color, bottom_clothing, bottom_clothing_color
   ], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Avatar güncelleme hatası:", err);
+      return res.status(500).json({ error: "Avatar güncellenemedi" });
+    }
+    console.log("✅ Avatar başarıyla kaydedildi - User ID:", userId);
     res.json({ message: "Avatar güncellendi" });
   });
 });
@@ -514,35 +694,11 @@ app.get("/api/avatar", authenticateToken, (req, res) => {
   const sql = "SELECT * FROM avatars WHERE user_id = ?";
   
   db.query(sql, [userId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Avatar getirme hatası:", err);
+      return res.status(500).json({ error: "Avatar bilgileri getirilemedi" });
+    }
     res.json(results.length > 0 ? results[0] : null);
-  });
-});
-
-// ==================== AVATAR PREFS ====================
-app.post("/api/avatar-prefs", authenticateToken, (req, res) => {
-  const { hair, eyes, outfit } = req.body;
-  const userId = req.user.userId;
-
-  const sql = `
-    INSERT INTO avatar_prefs (user_id, hair, eyes, outfit)
-    VALUES (?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE hair = ?, eyes = ?, outfit = ?
-  `;
-
-  db.query(sql, [userId, hair, eyes, outfit, hair, eyes, outfit], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: "Avatar tercihleri güncellendi" });
-  });
-});
-
-app.get("/api/avatar-prefs", authenticateToken, (req, res) => {
-  const userId = req.user.userId;
-  const sql = "SELECT * FROM avatar_prefs WHERE user_id = ?";
-  
-  db.query(sql, [userId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results.length > 0 ? results[0] : { hair: 0, eyes: 0, outfit: 0 });
   });
 });
 
@@ -562,7 +718,10 @@ app.post("/api/focus-daily", authenticateToken, (req, res) => {
     userId, date, hydration_count, movement_count,
     hydration_count, movement_count
   ], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Focus kaydı hatası:", err);
+      return res.status(500).json({ error: "Veri kaydedilemedi" });
+    }
     res.json({ message: "Focus verisi kaydedildi" });
   });
 });
@@ -573,7 +732,10 @@ app.get("/api/focus-daily/:date", authenticateToken, (req, res) => {
 
   const sql = "SELECT * FROM focus_daily WHERE user_id = ? AND date = ?";
   db.query(sql, [userId, date], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Focus verisi getirme hatası:", err);
+      return res.status(500).json({ error: "Veri getirilemedi" });
+    }
     res.json(results.length > 0 ? results[0] : { hydration_count: 0, movement_count: 0 });
   });
 });
@@ -585,7 +747,10 @@ app.post("/api/personal-reminders", authenticateToken, (req, res) => {
 
   const sql = "INSERT INTO personal_reminders (user_id, date, text) VALUES (?, ?, ?)";
   db.query(sql, [userId, date, text], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Hatırlatıcı ekleme hatası:", err);
+      return res.status(500).json({ error: "Hatırlatıcı eklenemedi" });
+    }
     res.json({ message: "Hatırlatıcı eklendi", id: result.insertId });
   });
 });
@@ -596,7 +761,10 @@ app.get("/api/personal-reminders/:date", authenticateToken, (req, res) => {
 
   const sql = "SELECT * FROM personal_reminders WHERE user_id = ? AND date = ? ORDER BY id ASC";
   db.query(sql, [userId, date], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Hatırlatıcı listesi getirme hatası:", err);
+      return res.status(500).json({ error: "Hatırlatıcılar getirilemedi" });
+    }
     res.json(results);
   });
 });
@@ -616,7 +784,10 @@ app.put("/api/personal-reminders/:id", authenticateToken, (req, res) => {
   }
 
   db.query(sql, params, (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Hatırlatıcı güncelleme hatası:", err);
+      return res.status(500).json({ error: "Hatırlatıcı güncellenemedi" });
+    }
     if (result.affectedRows === 0) return res.status(404).json({ error: "Hatırlatıcı bulunamadı" });
     res.json({ message: "Hatırlatıcı güncellendi" });
   });
@@ -628,7 +799,10 @@ app.delete("/api/personal-reminders/:id", authenticateToken, (req, res) => {
 
   const sql = "DELETE FROM personal_reminders WHERE id = ? AND user_id = ?";
   db.query(sql, [id, userId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ Hatırlatıcı silme hatası:", err);
+      return res.status(500).json({ error: "Hatırlatıcı silinemedi" });
+    }
     if (result.affectedRows === 0) return res.status(404).json({ error: "Hatırlatıcı bulunamadı" });
     res.json({ message: "Hatırlatıcı silindi" });
   });
