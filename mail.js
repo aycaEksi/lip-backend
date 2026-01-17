@@ -2,7 +2,6 @@ import nodemailer from "nodemailer";
 
 export async function sendMail({ to, subject, html }) {
   try {
-    // Gmail SMTP ile basit kullanım
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 587,
@@ -13,7 +12,6 @@ export async function sendMail({ to, subject, html }) {
       },
     });
 
-    // Bağlantıyı test et
     await transporter.verify();
     console.log("✅ SMTP bağlantısı başarılı");
 

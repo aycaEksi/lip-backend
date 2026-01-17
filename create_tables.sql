@@ -1,15 +1,24 @@
 -- LipApp MySQL Database Schema
 
+-- users tablosu
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100),
+  email VARCHAR(255),
+  password VARCHAR(255),
+  verification_token VARCHAR(255),
+  is_verified TINYINT(1) DEFAULT 0
+);
+
 -- day_entries tablosu
 CREATE TABLE IF NOT EXISTS day_entries (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   date DATE NOT NULL,
-  note TEXT,
-  photo1_url TEXT,
-  photo2_url TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY unique_user_date (user_id, date),
+  note TEXT DEFAULT NULL,
+  photo1_path VARCHAR(255) DEFAULT NULL,
+  photo2_path VARCHAR(255) DEFAULT NULL,
+  UNIQUE KEY uniq_user_date (user_id, date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -17,11 +26,10 @@ CREATE TABLE IF NOT EXISTS day_entries (
 CREATE TABLE IF NOT EXISTS tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
-  period VARCHAR(20) NOT NULL,
+  period ENUM('daily','weekly','monthly','yearly') NOT NULL,
   title VARCHAR(255) NOT NULL,
-  done TINYINT(1) DEFAULT 0,
-  due_date DATE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  done TINYINT(1) NOT NULL DEFAULT 0,
+  due_date DATE DEFAULT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -32,20 +40,21 @@ CREATE TABLE IF NOT EXISTS capsules (
   title VARCHAR(255) NOT NULL,
   note TEXT NOT NULL,
   unlock_at DATETIME NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- moods tablosu
 CREATE TABLE IF NOT EXISTS moods (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
-  energy INT NOT NULL,
-  happiness INT NOT NULL,
-  stress INT NOT NULL,
-  note TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  user_id INT DEFAULT NULL,
+  energy INT DEFAULT NULL,
+  happiness INT DEFAULT NULL,
+  stress INT DEFAULT NULL,
+  durum VARCHAR(50) DEFAULT NULL,
+  note TEXT DEFAULT NULL,
+  created_at DATETIME DEFAULT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- avatars tablosu (kullanıcı avatar özellikleri)
@@ -69,9 +78,8 @@ CREATE TABLE IF NOT EXISTS avatars (
 CREATE TABLE IF NOT EXISTS focus_daily (
   user_id INT NOT NULL,
   date DATE NOT NULL,
-  hydration_count INT DEFAULT 0,
-  movement_count INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  hydration_count INT NOT NULL DEFAULT 0,
+  movement_count INT NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -81,8 +89,7 @@ CREATE TABLE IF NOT EXISTS personal_reminders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   date DATE NOT NULL,
-  text VARCHAR(500) NOT NULL,
-  done TINYINT(1) DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  text TEXT NOT NULL,
+  done TINYINT(1) NOT NULL DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

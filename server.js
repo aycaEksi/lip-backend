@@ -17,11 +17,9 @@ import { fileURLToPath } from "url";
 import { db } from "./db.js";
 import { sendMail } from "./mail.js";
 
-// ES6 modules için __dirname alternatifi
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// JWT secret key (.env'ye ekle)
 const JWT_SECRET = process.env.JWT_SECRET || "lip-app-secret-key-2026";
 
 
@@ -29,7 +27,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Static files için uploads klasörünü serve et
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use((req, res, next) => {
@@ -42,12 +39,10 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-/* ---------------- REGISTER ---------------- */
 
 app.post("/api/register", (req, res) => {
   const { name, email, password } = req.body;
   
-  // Önce email'in var olup olmadığını kontrol et
   const checkEmailSql = "SELECT id, is_verified FROM users WHERE email = ?";
   
   db.query(checkEmailSql, [email], async (err, results) => {
@@ -69,7 +64,6 @@ app.post("/api/register", (req, res) => {
       }
     }
     
-    // 6 haneli doğrulama kodu üret
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     const sql = `
@@ -120,7 +114,6 @@ app.post("/api/register", (req, res) => {
   });
 });
 
-/* ---------------- VERIFY CODE ---------------- */
 
 app.post("/api/verify-code", (req, res) => {
   const { email, code } = req.body;
@@ -151,8 +144,6 @@ app.post("/api/verify-code", (req, res) => {
     });
   });
 });
-
-/* ---------------- LOGIN ---------------- */
 
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body;
@@ -190,11 +181,10 @@ app.post("/api/login", (req, res) => {
   });
 });
 
-/* ---------------- AUTH MIDDLEWARE ---------------- */
 
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = authHeader && authHeader.split(' ')[1]; 
 
   if (!token) {
     return res.status(401).json({ error: "Token bulunamadı. Lütfen giriş yapın." });
@@ -204,12 +194,11 @@ const authenticateToken = (req, res, next) => {
     if (err) {
       return res.status(403).json({ error: "Geçersiz veya süresi dolmuş token" });
     }
-    req.user = user; // user bilgisini request'e ekle
+    req.user = user; 
     next();
   });
 };
 
-/* ---------------- GET USER PROFILE ---------------- */
 
 app.get("/api/profile", authenticateToken, (req, res) => {
   const sql = `SELECT id, name, email, is_verified FROM users WHERE id = ?`;
@@ -233,7 +222,6 @@ app.get("/api/profile", authenticateToken, (req, res) => {
   });
 });
 
-/* ---------------- AI MOTIVATION ---------------- */
 
 app.post("/api/motivation", async (req, res) => {
   try {
@@ -275,10 +263,6 @@ SADECE şu JSON formatında cevap ver:
   }
 });
 
-/* ---------------- SERVER ---------------- */
-
-// ==================== UPLOAD PHOTO ====================
-// Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, './uploads/');
@@ -291,8 +275,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
-  // fileFilter geçici olarak devre dışı - her dosyayı kabul et
+  limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
 app.post('/api/upload-photo', authenticateToken, upload.single('photo'), (req, res) => {
@@ -305,13 +288,11 @@ app.post('/api/upload-photo', authenticateToken, upload.single('photo'), (req, r
     return res.status(400).json({ error: 'Dosya yüklenemedi' });
   }
   
-  // URL'i döndür
   const photoPath = `/uploads/${req.file.filename}`;
   console.log("✅ Resim yüklendi:", photoPath);
   res.json({ path: photoPath });
 });
 
-// ==================== DAY ENTRIES ====================
 app.post("/api/day-entries", authenticateToken, (req, res) => {
   console.log("📸 Day Entry POST isteği geldi");
   console.log("📦 Gelen veri:", req.body);
@@ -367,7 +348,6 @@ app.get("/api/day-entries", authenticateToken, (req, res) => {
   });
 });
 
-// ==================== TASKS ====================
 app.post("/api/tasks", authenticateToken, (req, res) => {
   const { period, title, due_date } = req.body;
   const userId = req.user.userId;
@@ -410,7 +390,6 @@ app.put("/api/tasks/:id", authenticateToken, (req, res) => {
   const { title, done, due_date } = req.body;
   const userId = req.user.userId;
 
-  // Sadece gönderilen alanları güncelle
   const updates = [];
   const values = [];
   
@@ -459,7 +438,6 @@ app.delete("/api/tasks/:id", authenticateToken, (req, res) => {
   });
 });
 
-// ==================== CAPSULES ====================
 app.post("/api/capsules", authenticateToken, (req, res) => {
   const { title, note, unlock_at } = req.body;
   const userId = req.user.userId;
@@ -502,13 +480,11 @@ app.delete("/api/capsules/:id", authenticateToken, (req, res) => {
   });
 });
 
-// ==================== MOODS ====================
 app.post("/api/moods", authenticateToken, async (req, res) => {
   const { energy, happiness, stress, note } = req.body;
   const userId = req.user.userId;
 
   try {
-    // AI'dan tek kelimelik durum al
     const prompt = `
 Kullanıcının ruh hali değerleri:
 Enerji: ${energy}/10
@@ -545,7 +521,6 @@ Sadece tek kelime döndür, başka bir şey yazma.
     });
   } catch (err) {
     console.error("❌ AI hatası:", err.message);
-    // AI hatası olursa durum olmadan kaydet
     const sql = "INSERT INTO moods (user_id, energy, happiness, stress, note) VALUES (?, ?, ?, ?, ?)";
     db.query(sql, [userId, energy, happiness, stress, note || null], (err, result) => {
       if (err) {
@@ -584,7 +559,6 @@ app.get("/api/moods/latest", authenticateToken, (req, res) => {
   });
 });
 
-// Sadece son durum kelimesini getir
 app.get("/api/moods/latest-durum", authenticateToken, (req, res) => {
   const userId = req.user.userId;
   console.log("🔍 /api/moods/latest-durum - userId:", userId);
@@ -609,7 +583,6 @@ app.get("/api/moods/latest-durum", authenticateToken, (req, res) => {
   });
 });
 
-// Mood için AI yorumu
 app.post("/api/moods/insight", authenticateToken, async (req, res) => {
   try {
     const { energy, happiness, stress, note } = req.body;
@@ -637,7 +610,6 @@ Lütfen bu ruh haline göre kısa, olumlu, motive edici bir yorum yaz (maksimum 
   }
 });
 
-// ==================== AVATAR ====================
 app.post("/api/avatar", authenticateToken, (req, res) => {
   console.log("🎨 Avatar POST isteği geldi");
   console.log("📦 Body:", req.body);
@@ -702,7 +674,6 @@ app.get("/api/avatar", authenticateToken, (req, res) => {
   });
 });
 
-// ==================== FOCUS DAILY ====================
 app.post("/api/focus-daily", authenticateToken, (req, res) => {
   const { date, hydration_count, movement_count } = req.body;
   const userId = req.user.userId;
@@ -740,7 +711,6 @@ app.get("/api/focus-daily/:date", authenticateToken, (req, res) => {
   });
 });
 
-// ==================== PERSONAL REMINDERS ====================
 app.post("/api/personal-reminders", authenticateToken, (req, res) => {
   const { date, text } = req.body;
   const userId = req.user.userId;
@@ -808,7 +778,6 @@ app.delete("/api/personal-reminders/:id", authenticateToken, (req, res) => {
   });
 });
 
-/* ---------------- SERVER ---------------- */
 
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
