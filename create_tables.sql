@@ -48,14 +48,19 @@ CREATE TABLE IF NOT EXISTS moods (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- avatars tablosu
+-- avatars tablosu (kullanıcı avatar özellikleri)
 CREATE TABLE IF NOT EXISTS avatars (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL UNIQUE,
-  hair_style VARCHAR(50),
-  hair_color VARCHAR(50),
-  outfit VARCHAR(50),
-  outfit_color VARCHAR(50),
+  hair_style VARCHAR(50),          -- Saç stili
+  hair_color VARCHAR(50),          -- Saç rengi
+  eye_color VARCHAR(50),           -- Göz rengi
+  skin_tone VARCHAR(50),           -- Ten rengi
+  gender VARCHAR(20),              -- Cinsiyet
+  top_clothing VARCHAR(50),        -- Üst kıyafet
+  top_clothing_color VARCHAR(50),  -- Üst kıyafet rengi
+  bottom_clothing VARCHAR(50),     -- Alt kıyafet
+  bottom_clothing_color VARCHAR(50), -- Alt kıyafet rengi
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -68,16 +73,6 @@ CREATE TABLE IF NOT EXISTS focus_daily (
   movement_count INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, date),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- avatar_prefs tablosu
-CREATE TABLE IF NOT EXISTS avatar_prefs (
-  user_id INT PRIMARY KEY,
-  hair INT DEFAULT 0,
-  eyes INT DEFAULT 0,
-  outfit INT DEFAULT 0,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
